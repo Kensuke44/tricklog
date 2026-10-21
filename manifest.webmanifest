@@ -1,0 +1,16 @@
+{
+ "id":"./",
+ "name":"TrickLog - 回数制練習ログ",
+ "short_name":"TrickLog",
+ "description":"自由な練習メニューと試行・成功率の記録。端末内保存、オフライン対応。",
+ "start_url":"./",
+ "scope":"./",
+ "display":"standalone",
+ "background_color":"#f7f8fc",
+ "theme_color":"#f7f8fc",
+ "lang":"ja",
+ "icons":[
+  {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+  {"src":"./icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+ ]
+}
