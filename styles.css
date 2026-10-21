@@ -10,3 +10,16 @@
 .skill-add{border-top:1px dashed var(--line);padding-top:12px;margin-top:12px}
 .skill-add .field{margin-bottom:9px}
 .tiny-badge{font-size:11px;border-radius:7px;padding:5px 7px;background:var(--primary-muted);color:var(--primary-text);font-weight:750}
+
+/* v1.2.0: instant batch count selection, usable on small phones */
+.batch-panel{border:1px solid var(--line);border-radius:15px;padding:14px 11px;background:var(--surface2)}
+.batch-size-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.batch-prompt{font-size:13px;line-height:1.65;margin:15px 0 11px;color:var(--text)}
+.batch-prompt strong{font-size:18px;color:var(--primary-text)}
+.batch-numbers{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px}
+.batch-number{min-width:0;min-height:51px;padding:4px 0;border:1px solid var(--line);background:var(--surface);border-radius:12px;color:var(--text);font-size:19px;font-weight:800;touch-action:manipulation}
+.batch-number:active{background:var(--primary-muted);border-color:var(--primary);transform:scale(.95)}
+.batch-number:disabled{opacity:.42}
+.batch-history{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.batch-chip{font-size:11px;line-height:1.5;background:var(--primary-muted);color:var(--primary-text);border-radius:9px;padding:7px 9px;font-weight:750}
+@media(max-width:355px){.batch-numbers{gap:5px}.batch-number{font-size:17px;min-height:47px}}

@@ -1,6 +1,6 @@
 'use strict';
 (()=>{
-// TrickLog 1.1.0 -- Backwards-compatible with v1.x's tricklog_v1 localStorage data.
+// TrickLog 1.2.0 -- Backwards-compatible with v1.x's tricklog_v1 localStorage data.
 // Deliberately no analytics, account, remote APIs, or user-data network requests.
 const STORE='tricklog_v1';
 const id=()=> 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -10,8 +10,8 @@ const clone=x=>JSON.parse(JSON.stringify(x));
 function defaultMenu(){
  const make=(group,name,type,target,extra={})=>({id:id(),group,name,type,target,detail:'',...extra});
  return {name:'練習メニュー（サンプル）',steps:[
-  make('① 基本技','トラピーズ','count',10),
-  make('② 音ハメ','グリーントライアングル','sync',5),
+  make('① 基本技','トラピーズ','count',10,{inputMode:'batch',batchSize:5}),
+  make('② 音ハメ','グリーントライアングル','timing',5,{inputMode:'batch',batchSize:5}),
   make('③ コンボ','コンボ練習','full',1,{skills:[
    {id:id(),part:'コンボ',name:'トラピーズ'},
    {id:id(),part:'コンボ',name:'グリーントライアングル'},
@@ -45,7 +45,7 @@ function migrateSkillIds(state){
   });
  }
 }
-function blankEntry(s){if(s.type==='check')return{done:false};if(s.type==='count'||s.type==='sync')return{trials:[]};if(s.type==='rating')return{rating:null,note:''};return{ratings:Array((s.skills||[]).length).fill(null),timing:'',stopped:'',other:''};}
+function blankEntry(s){if(s.type==='check')return{done:false};if(s.type==='count'||s.type==='timing')return{trials:[],batches:[]};if(s.type==='sync')return{trials:[]};if(s.type==='rating')return{rating:null,note:''};return{ratings:Array((s.skills||[]).length).fill(null),timing:'',stopped:'',other:''};}
 function newSession(menu,date=today()){return{id:id(),date,status:'active',stepIndex:0,menu:clone(menu),entries:Object.fromEntries(menu.steps.map(s=>[s.id,blankEntry(s)])),archivedItems:[],notes:'',endReason:'',endMemo:'',created:new Date().toISOString()};}
 function initial(){let menu=defaultMenu();return{menu,active:newSession(menu),history:[],settings:{theme:'light'}};}
 let data=initial(),storageOK=true;
@@ -56,7 +56,7 @@ if(!themeValues.includes(data.settings.theme))data.settings.theme='light';
 const applyTheme=()=>{document.documentElement.dataset.theme=data.settings.theme;document.querySelector('meta[name="theme-color"]').content=(data.settings.theme==='dark'||data.settings.theme==='system'&&matchMedia('(prefers-color-scheme: dark)').matches)?'#101621':'#f7f8fc';};
 applyTheme();
 try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(data.settings.theme==='system')applyTheme();});}catch{}
-let screen='practice',editExpanded=null,historyOpen=null,syncDraft={skill:'',timing:''};
+let screen='practice',editExpanded=null,historyOpen=null,syncDraft={skill:'',timing:''},batchChoice={};
 const app=document.querySelector('#app');
 const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=sel=>document.querySelector(sel);
@@ -65,8 +65,27 @@ function notify(msg){const el=$('#toast');el.textContent=msg;el.classList.add('s
 function dialog(title,body,yes,onYes,extra=''){const root=$('#modal-root');root.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><h2>${safe(title)}</h2><p>${safe(body)}</p>${extra}<div class="btnrow top-margin"><button class="btn line fill" id="modal-cancel">キャンセル</button><button class="btn primary fill" id="modal-yes">${safe(yes)}</button></div></div>`;$('#modal-cancel').onclick=()=>root.innerHTML='';$('#modal-yes').onclick=()=>{const success=onYes();if(success!==false)root.innerHTML='';};}
 function download(name,content,mime='application/json'){const blob=new Blob([content],{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);}
 const ratio=(a,b)=>b?Math.round(a/b*100)+'%':'—';
-function hasData(s,e){if(!e)return false;switch(s.type){case 'check':return Boolean(e.done);case 'count':case 'sync':return Boolean(e.trials?.length);case 'rating':return Boolean(e.rating||e.note);case 'full':return Boolean(e.ratings?.some(Boolean)||e.timing||e.stopped||e.other);default:return false;}}
-function entryDone(s,e){if(!e)return false;switch(s.type){case'check':return !!e.done;case'count':case'sync':return (e.trials?.length||0)>=s.target;case'rating':return e.rating!==null&&e.rating!==undefined;case'full':return !!((s.skills?.length||0)>0&&e.ratings?.length===s.skills?.length&&e.ratings.every(Boolean)&&(!s.showTiming||e.timing)&&e.stopped);default:return false;}}
+// Legacy individual trials are preserved verbatim. New quick/aggregate input uses batches.
+const batchList=e=>Array.isArray(e?.batches)?e.batches:[];
+const batchMode=s=>s.inputMode==='batch'?'batch':'single'; // Old menus keep their 1-by-1 setting.
+const configuredBatch=s=>s.batchSize===10?10:5;
+function statsFor(s,e){
+ const trials=Array.isArray(e?.trials)?e.trials:[];
+ const batches=batchList(e);
+ if(s.type==='sync'){
+  const skill=trials.filter(x=>x&&x.skill==='ok').length;
+  const matched=trials.filter(x=>x&&x.skill==='ok'&&x.timing==='fit').length;
+  const decided=trials.filter(x=>x&&x.timing!=='unknown').length;
+  const fit=trials.filter(x=>x&&x.timing==='fit').length;
+  return {attempts:trials.length,successes:skill,matched,decided,fit};
+ }
+ const legacy=s.type==='count'?trials.filter(x=>x===true).length:0;
+ const attempts=trials.length+batches.reduce((v,b)=>v+b.attempts,0);
+ const successes=legacy+batches.reduce((v,b)=>v+b.successes,0);
+ return {attempts,successes};
+}
+function hasData(s,e){if(!e)return false;switch(s.type){case 'check':return Boolean(e.done);case 'count':case 'timing':return statsFor(s,e).attempts>0;case 'sync':return Boolean(e.trials?.length);case 'rating':return Boolean(e.rating||e.note);case 'full':return Boolean(e.ratings?.some(Boolean)||e.timing||e.stopped||e.other);default:return false;}}
+function entryDone(s,e){if(!e)return false;switch(s.type){case'check':return !!e.done;case'count':case'timing':case'sync':return statsFor(s,e).attempts>=s.target;case'rating':return e.rating!==null&&e.rating!==undefined;case'full':return !!((s.skills?.length||0)>0&&e.ratings?.length===s.skills?.length&&e.ratings.every(Boolean)&&(!s.showTiming||e.timing)&&e.stopped);default:return false;}}
 // When a menu changes, preserve entries by stable IDs, including any recorded trials.
 // Deleted items or incompatible type edits move old entries to an inspectable, exported archive.
 function syncActiveMenu(){const a=data.active;if(!a||!['active','paused'].includes(a.status))return;
@@ -94,13 +113,31 @@ function ratingsUI(value,type,index,disabled){return`<div class="rating-group">$
 function optionsUI(name,value,choices,disabled){return`<div class="optionrow">${choices.map(([v,l])=>`<label><input type="radio" name="${name}" value="${v}" ${value===v?'checked':''} ${disabled}><span>${l}</span></label>`).join('')}</div>`;}
 function renderStep(s,e,editable){const disabled=editable?'':'disabled';let h='';
  if(s.type==='check')return `<p class="note">ウォーミングアップ完了後にチェックしてください。</p><label class="row"><strong>完了</strong><input type="checkbox" data-action="check" ${e.done?'checked':''} ${disabled} style="height:24px;width:24px"></label>`;
- if(s.type==='count'||s.type==='sync'){
-  const n=e.trials.length,k=(s.type==='count'?e.trials.filter(x=>x===true):e.trials.filter(x=>x.skill==='ok')).length;
-  h+=`<div class="row"><span class="inline-label">目標 ${s.target}回</span><span class="pill ${n>=s.target?'done':''}">${n>=s.target?'目標達成':'残り'+(s.target-n)+'回'}</span></div><div class="progress"><div style="width:${Math.min(100,n/s.target*100)}%"></div></div><div class="statgrid top-margin"><div class="stat"><b>${n}/${s.target}</b><small>試行</small></div><div class="stat"><b>${k}</b><small>${s.type==='sync'?'技の成功':'成功回数'}</small></div><div class="stat"><b>${ratio(k,n)}</b><small>成功率</small></div></div>`;
-  if(s.type==='count')h+=`<div class="bigactions"><button class="btn green" data-action="trial" data-val="ok" ${disabled} ${n>=s.target?'disabled':''}>○ 成功</button><button class="btn red" data-action="trial" data-val="ng" ${disabled} ${n>=s.target?'disabled':''}>× 失敗</button></div>`;
-  else{const t=e.trials.filter(x=>x.timing!=='unknown').length,m=e.trials.filter(x=>x.timing==='fit').length;h+=`<div class="trial-summary top-margin"><div class="row"><span class="inline-label">音ハメ</span><b>${m}/${t}（${ratio(m,t)}）</b></div><div class="mini">判定不能：${e.trials.filter(x=>x.timing==='unknown').length}回</div></div><div class="field top-margin"><label>今回の技</label>${optionsUI('syncskill',syncDraft.skill,[['ok','○ 成功'],['ng','× 失敗']],disabled)}</div><div class="field"><label>今回の音ハメ</label>${optionsUI('synctiming',syncDraft.timing,[['fit','合った'],['early','早い'],['late','遅い'],['unknown','判定不能']],disabled)}</div><button class="btn primary wide" data-action="sync-add" ${disabled} ${n>=s.target||!syncDraft.skill||!syncDraft.timing?'disabled':''}>この1回を記録 ＋</button>`;}
-  h+=`<div class="row top-margin"><span class="muted">${n?'最近の記録':'まだ記録がありません'}</span><button class="btn line small" data-action="undo-trial" ${disabled} ${n===0?'disabled':''}>↶ 1回取り消し</button></div>`;
-  if(n)h+=`<div class="trial-history">${e.trials.map((v,i)=>{const ok=s.type==='count'?v===true:v.skill==='ok';return`<span class="trial-dot ${ok?'ok':'ng'}">${i+1} ${ok?'○':'×'}</span>`;}).join('')}</div>`;return h;
+ if(s.type==='count'||s.type==='timing'||s.type==='sync'){
+  const v=statsFor(s,e),n=v.attempts,k=v.successes,left=Math.max(0,s.target-n);
+  h+=`<div class="row"><span class="inline-label">目標 ${s.target}回</span><span class="pill ${n>=s.target?'done':''}">${n>=s.target?'目標達成':'残り'+left+'回'}</span></div><div class="progress"><div style="width:${Math.min(100,n/s.target*100)}%"></div></div><div class="statgrid top-margin"><div class="stat"><b>${n}/${s.target}</b><small>試行</small></div><div class="stat"><b>${k}</b><small>${s.type==='sync'?'技の成功':'成功回数'}</small></div><div class="stat"><b>${ratio(k,n)}</b><small>${s.type==='sync'?'技の成功率':'成功率'}</small></div></div>`;
+  if(s.type==='sync'){
+   h+=`<div class="trial-summary top-margin"><div class="row"><span class="inline-label">旧・詳細音ハメ</span><b>${v.fit}/${v.decided}（${ratio(v.fit,v.decided)}）</b></div><div class="mini">判定不能：${n-v.decided}回 ／ 技成功かつ音一致：${v.matched}/${n}（${ratio(v.matched,n)}）</div></div><p class="note">この項目は旧方式です。新しい「音ハメの練習」はメニューの記録方式から選べます。旧記録は自動変換しません。</p><div class="field top-margin"><label>今回の技</label>${optionsUI('syncskill',syncDraft.skill,[['ok','○ 成功'],['ng','× 失敗']],disabled)}</div><div class="field"><label>今回の音ハメ</label>${optionsUI('synctiming',syncDraft.timing,[['fit','合った'],['early','早い'],['late','遅い'],['unknown','判定不能']],disabled)}</div><button class="btn primary wide" data-action="sync-add" ${disabled} ${n>=s.target||!syncDraft.skill||!syncDraft.timing?'disabled':''}>この1回を記録 ＋</button>`;
+   h+=`<div class="row top-margin"><span class="muted">${n?'最近の記録':'まだ記録がありません'}</span><button class="btn line small" data-action="undo-trial" ${disabled} ${n===0?'disabled':''}>↶ 1回取り消し</button></div>`;
+   if(n)h+=`<div class="trial-history">${e.trials.map((x,i)=>`<span class="trial-dot ${x.skill==='ok'?'ok':'ng'}">${i+1} ${x.skill==='ok'?'○':'×'}</span>`).join('')}</div>`;
+   return h;
+  }
+  if(s.type==='timing')h+='<p class="note">○＝技を成功させ、狙った音にも合った。技の失敗・タイミングのずれは×です。</p>';
+  const mode=batchMode(s);
+  if(mode==='batch'){
+   const choice=batchChoice[s.id]||configuredBatch(s),take=Math.min(left,choice);
+   h+=`<div class="batch-panel top-margin"><div class="inline-label">まとめて練習する回数</div><div class="batch-size-row">${[5,10].map(x=>`<button type="button" class="btn ${choice===x?'primary':'line'}" data-action="batch-choose" data-count="${x}" ${disabled} ${left===0?'disabled':''}>${x}回</button>`).join('')}</div>`;
+   if(left>0){h+=`<p class="batch-prompt"><strong>${take}回</strong>練習したあと、成功回数を1回タップ</p><div class="batch-numbers">${Array.from({length:take+1},(_,i)=>`<button type="button" class="batch-number" data-action="record-batch" data-attempts="${take}" data-successes="${i}" ${disabled}>${i}</button>`).join('')}</div>`;}
+   else h+='<div class="okbox top-margin">目標回数に達しました。</div>';
+   h+='</div>';
+  }else{
+   h+=`<div class="bigactions"><button class="btn green" data-action="quick-trial" data-val="ok" ${disabled} ${left===0?'disabled':''}>○ 成功</button><button class="btn red" data-action="quick-trial" data-val="ng" ${disabled} ${left===0?'disabled':''}>× 失敗</button></div>`;
+  }
+  const batches=batchList(e);
+  h+=`<div class="row top-margin"><span class="muted">${n?'記録済み':'まだ記録がありません'}</span><button class="btn line small" data-action="undo-record" ${disabled} ${!batches.length&&!e.trials?.length?'disabled':''}>↶ 直前の記録を取り消す</button></div>`;
+  if(batches.length)h+=`<div class="batch-history">${batches.slice(-12).map(b=>`<span class="batch-chip">${b.attempts}回中 ${b.successes}回成功</span>`).join('')}</div>`;
+  if(e.trials?.length)h+=`<p class="mini top-margin">旧方式の個別記録：${e.trials.length}回（保存したまま集計）</p>`;
+  return h;
  }
  if(s.type==='rating')return `<div class="inline-label">通し練習の結果</div>${ratingsUI(e.rating,'rating',null,disabled)}<div class="field top-margin"><label>メモ（任意）</label><textarea id="rating-note" ${disabled}>${safe(e.note||'')}</textarea></div>`;
  if(s.type==='full'){
@@ -115,7 +152,7 @@ function renderStep(s,e,editable){const disabled=editable?'':'disabled';let h=''
 function practiceView(){const ss=data.active;if(!ss||!ss.menu.steps.length){app.innerHTML='<div class="page"><div class="empty"><strong>練習を始めましょう</strong></div></div>';return;}
  const s=ss.menu.steps[ss.stepIndex],e=ss.entries[s.id],completed=ss.menu.steps.filter(v=>entryDone(v,ss.entries[v.id])).length;
  const status={active:'練習中',paused:'一時中断',ended:'途中終了',complete:'全メニュー完了'}[ss.status];
- let h=`<div class="page"><div class="hero"><div class="eyebrow">TODAY'S PRACTICE · v1.1.2</div><h1>${safe(ss.menu.name)}</h1></div>`;
+ let h=`<div class="page"><div class="hero"><div class="eyebrow">TODAY'S PRACTICE · v1.2.0</div><h1>${safe(ss.menu.name)}</h1></div>`;
  if(!storageOK)h+='<div class="alert">端末の保存領域に書き込めません。バックアップをお試しください。</div>';
  h+=`<div class="card"><div class="row"><div class="field" style="margin:0;max-width:180px;flex:1"><label>練習日</label><input type="date" id="session-date" value="${safe(ss.date)}" ${ss.status==='active'?'':'disabled'}></div><span class="pill ${ss.status==='complete'?'done':ss.status==='ended'?'warn':''}">${status}</span></div><div class="row top-margin"><span class="muted">進捗 ${completed}/${ss.menu.steps.length}項目</span><span class="muted">${Math.round(completed/ss.menu.steps.length*100)}%</span></div><div class="progress top-margin"><div style="width:${completed/ss.menu.steps.length*100}%"></div></div></div>`;
  h+=`<div class="sectionbar"><h2>練習ステップ</h2><span class="muted">タップして移動</span></div><div class="step-nav">${ss.menu.steps.map((st,i)=>`<button class="step-chip ${ss.stepIndex===i?'active':entryDone(st,ss.entries[st.id])?'complete':''}" data-action="go-step" data-index="${i}">${i+1} ${entryDone(st,ss.entries[st.id])?'✓ ':''}${safe(st.name.length>11?st.name.slice(0,11)+'…':st.name)}</button>`).join('')}</div>`;
@@ -128,13 +165,14 @@ function practiceView(){const ss=data.active;if(!ss||!ss.menu.steps.length){app.
  h+='</div>';app.innerHTML=h;
 }
 function menuView(){const m=data.menu;const live=data.active&&['active','paused'].includes(data.active.status);
- let h=`<div class="page"><div class="hero"><div class="eyebrow">CUSTOMIZE YOUR ROUTINE · v1.1.2</div><h1>自分だけのメニューを作る</h1><p>技名・目標回数・順番をいつでも変更できます。</p></div>`;
+ let h=`<div class="page"><div class="hero"><div class="eyebrow">CUSTOMIZE YOUR ROUTINE · v1.2.0</div><h1>自分だけのメニューを作る</h1><p>技名・目標回数・順番をいつでも変更できます。</p></div>`;
 
  h+=`<div class="card"><div class="field"><label>メニュー名</label><input data-menu-name value="${safe(m.name)}" maxlength="100"></div><div class="okbox">${live?'追加・編集・並べ替えは、現在の練習画面へすぐ反映されます。入力済みの回数は保持します。':'このメニューは次に開始する練習から使われます。終了済みの履歴は変わりません。'}</div><div class="btnrow top-margin"><button class="btn line fill" data-action="export-menu">メニュー共有用に書き出す</button><button class="btn line fill" data-action="import-menu">メニューを読み込む</button></div></div>`;
  h+=`<div class="sectionbar"><h2>練習項目（${m.steps.length}）</h2><span class="muted">編集・移動できます</span></div>`;
- m.steps.forEach((s,i)=>{const open=editExpanded===s.id;h+=`<div class="edititem"><div class="row row-top"><div style="flex:1"><div class="mini">${safe(s.group)} · ${safe(typeLabel(s.type))} ${['count','sync'].includes(s.type)?'· '+s.target+'回':''}</div><h3>${safe(s.name)}</h3></div><button class="btn small line" data-action="edit-toggle" data-id="${s.id}">${open?'閉じる':'編集'}</button></div>`;
- if(open){h+=`<div class="divider"></div><div class="field"><label>分類・パート名</label><input data-edit-key="group" data-edit-id="${s.id}" value="${safe(s.group)}"></div><div class="field"><label>練習項目名</label><input data-edit-key="name" data-edit-id="${s.id}" value="${safe(s.name)}"></div><div class="field"><label>記録方式</label><select data-edit-key="type" data-edit-id="${s.id}">${[['count','回数制（○×）'],['sync','音ハメ（技＋タイミング）'],['full','通し（各技 ○△×）'],['rating','総合評価（○△×）']].map(([v,l])=>`<option value="${v}" ${s.type===v?'selected':''}>${l}</option>`).join('')}${s.type==='check'?'<option value="check" selected disabled>完了チェック（旧形式）</option>':''}</select></div>`;
- if(['count','sync'].includes(s.type))h+=`<div class="field"><label>目標試行回数</label><input type="number" min="1" max="500" data-edit-key="target" data-edit-id="${s.id}" value="${s.target}"></div>`;
+ m.steps.forEach((s,i)=>{const open=editExpanded===s.id;h+=`<div class="edititem"><div class="row row-top"><div style="flex:1"><div class="mini">${safe(s.group)} · ${safe(typeLabel(s.type))} ${['count','sync','timing'].includes(s.type)?'· '+s.target+'回':''}</div><h3>${safe(s.name)}</h3></div><button class="btn small line" data-action="edit-toggle" data-id="${s.id}">${open?'閉じる':'編集'}</button></div>`;
+ if(open){h+=`<div class="divider"></div><div class="field"><label>分類・パート名</label><input data-edit-key="group" data-edit-id="${s.id}" value="${safe(s.group)}"></div><div class="field"><label>練習項目名</label><input data-edit-key="name" data-edit-id="${s.id}" value="${safe(s.name)}"></div><div class="field"><label>記録方式</label><select data-edit-key="type" data-edit-id="${s.id}">${[['count','技の練習（○×）'],['timing','音ハメの練習（○×）'],['sync','旧・詳細音ハメ（従来形式）'],['full','通し（各技 ○△×）'],['rating','総合評価（○△×）']].map(([v,l])=>`<option value="${v}" ${s.type===v?'selected':''}>${l}</option>`).join('')}${s.type==='check'?'<option value="check" selected disabled>完了チェック（旧形式）</option>':''}</select></div>`;
+ if(['count','sync','timing'].includes(s.type))h+=`<div class="field"><label>目標試行回数</label><input type="number" min="1" max="500" data-edit-key="target" data-edit-id="${s.id}" value="${s.target}"></div>`;
+ if(['count','timing'].includes(s.type))h+=`<div class="field"><label>入力方法</label><select data-edit-key="inputMode" data-edit-id="${s.id}"><option value="batch" ${batchMode(s)==='batch'?'selected':''}>まとめ記録（おすすめ）</option><option value="single" ${batchMode(s)==='single'?'selected':''}>1回ずつ（○×）</option></select></div>${batchMode(s)==='batch'?`<div class="field"><label>まとめる回数（初期設定）</label><select data-edit-key="batchSize" data-edit-id="${s.id}"><option value="5" ${configuredBatch(s)===5?'selected':''}>5回</option><option value="10" ${configuredBatch(s)===10?'selected':''}>10回</option></select></div>`:''}`;
  h+=`<div class="field"><label>説明（任意）</label><input data-edit-key="detail" data-edit-id="${s.id}" value="${safe(s.detail||'')}"></div>`;
  if(s.type==='full')h+=`<div class="field"><label style="display:flex;gap:9px;align-items:center"><input type="checkbox" data-edit-key="showTiming" data-edit-id="${s.id}" ${s.showTiming?'checked':''} style="width:20px;height:20px">音ハメ評価を使用する</label></div>${s.showTiming?`<div class="field"><label>音ハメ項目名</label><input data-edit-key="timingLabel" data-edit-id="${s.id}" value="${safe(s.timingLabel||'音ハメ')}"></div>`:''}<div class="skill-editor"><div class="row"><strong class="inline-label">評価する技（${(s.skills||[]).length}件）</strong><span class="mini">1件ずつ追加・編集</span></div>
  ${(s.skills||[]).length?'<p class="note">技名とパートを個別に入力できます。順番は↑↓で変更可能です。</p>':'<div class="alert">まだ技が登録されていません。下の欄から追加してください。</div>'}
@@ -142,13 +180,17 @@ function menuView(){const m=data.menu;const live=data.active&&['active','paused'
  <div class="skill-add"><div class="field"><label>新しい技名</label><input data-new-skill-name="${s.id}" placeholder="例：トラピーズ" maxlength="160"></div><div class="field"><label>パート・分類（任意）</label><input data-new-skill-part="${s.id}" placeholder="例：Part1" maxlength="40"></div><button class="btn primary wide" data-action="skill-add" data-id="${s.id}">＋ 技を追加</button></div></div>`;
  h+=`<div class="btnrow"><button class="btn small line" data-action="move-up" data-index="${i}" ${i===0?'disabled':''}>↑ 上へ</button><button class="btn small line" data-action="move-down" data-index="${i}" ${i===m.steps.length-1?'disabled':''}>↓ 下へ</button><button class="btn small line" data-action="duplicate" data-index="${i}">複製</button><button class="btn small red" data-action="delete-step" data-index="${i}">削除</button></div>`;
  }h+='</div>';});
- h+=`<div class="card"><h2 style="font-size:16px;margin-top:0">項目を追加</h2><div class="field"><label>練習名</label><input id="new-name" placeholder="例：新しいコンボ" maxlength="100"></div><div class="field"><label>記録方式</label><select id="new-type"><option value="count">回数制（○×）</option><option value="sync">音ハメ（技＋タイミング）</option><option value="full">通し（各技 ○△×）</option><option value="rating">総合評価（○△×）</option></select></div><div class="field"><label>目標回数（回数制・音ハメに使用）</label><input id="new-target" type="number" min="1" max="500" value="10"></div><button class="btn primary wide" data-action="add-step">＋ メニューに追加</button></div>`;
+ h+=`<div class="card"><h2 style="font-size:16px;margin-top:0">項目を追加</h2><div class="field"><label>練習名</label><input id="new-name" placeholder="例：新しいコンボ" maxlength="100"></div><div class="field"><label>記録方式</label><select id="new-type"><option value="count">技の練習（○×）</option><option value="timing">音ハメの練習（○×）</option><option value="full">通し（各技 ○△×）</option><option value="rating">総合評価（○△×）</option></select></div><div class="field"><label>目標回数（技・音ハメの練習）</label><input id="new-target" type="number" min="1" max="500" value="10"></div><button class="btn primary wide" data-action="add-step">＋ メニューに追加</button></div>`;
  h+=`<div class="card"><button class="btn line wide" data-action="reset-template">初期サンプル（4項目）に戻す</button><p class="note">確認後に初期化します。終了済みの練習履歴は削除されません。</p></div></div>`;app.innerHTML=h;
 }
-function typeLabel(t){return{count:'回数制',sync:'音ハメ',full:'通し',rating:'総合評価',check:'チェック'}[t]||t;}
-function scoreLabel(s,e){if(!e)return '未実施';if(s.type==='check')return e.done?'完了':'未実施';if(s.type==='count'||s.type==='sync'){const n=e.trials?.length||0,k=s.type==='count'?e.trials.filter(Boolean).length:e.trials.filter(x=>x.skill==='ok').length;return n?`${k}/${n}成功（${ratio(k,n)}）`:'未実施';}if(s.type==='rating')return e.rating?({ok:'○ 成功',mid:'△ 不安定',ng:'× 失敗'}[e.rating]):'未実施';if(s.type==='full'){const vals=(e.ratings||[]).filter(Boolean);return vals.length?`失敗${vals.filter(x=>x==='ng').length}・不安定${vals.filter(x=>x==='mid').length}（${vals.length}評価）`:'未実施';}return '未実施';}
+function typeLabel(t){return{count:'技の練習',timing:'音ハメの練習',sync:'旧・詳細音ハメ',full:'通し',rating:'総合評価',check:'チェック'}[t]||t;}
+function scoreLabel(s,e){if(!e)return '未実施';if(s.type==='check')return e.done?'完了':'未実施';if(['count','timing','sync'].includes(s.type)){
+ const v=statsFor(s,e);if(!v.attempts)return '未実施';
+ if(s.type==='sync')return `旧詳細：技${v.successes}/${v.attempts}（${ratio(v.successes,v.attempts)}）、技＋音一致${v.matched}/${v.attempts}（${ratio(v.matched,v.attempts)}）`;
+ return `${v.successes}/${v.attempts}成功（${ratio(v.successes,v.attempts)}）`;
+ }if(s.type==='rating')return e.rating?({ok:'○ 成功',mid:'△ 不安定',ng:'× 失敗'}[e.rating]):'未実施';if(s.type==='full'){const vals=(e.ratings||[]).filter(Boolean);return vals.length?`失敗${vals.filter(x=>x==='ng').length}・不安定${vals.filter(x=>x==='mid').length}（${vals.length}評価）`:'未実施';}return '未実施';}
 function sessionDetail(ss){let o='';ss.menu.steps.forEach(s=>{const e=ss.entries[s.id];o+=`<div class="row" style="border-bottom:1px solid var(--line);padding:9px 0"><span class="mini" style="flex:1;color:var(--text)">${safe(s.name)}</span><span class="mini" style="text-align:right">${safe(scoreLabel(s,e))}</span></div>`;});for(const a of ss.archivedItems||[]){o+=`<div class="row" style="border-bottom:1px solid var(--line);padding:9px 0"><span class="mini" style="flex:1">[退避] ${safe(a.step.name)}</span><span class="mini">${safe(scoreLabel(a.step,a.entry))}</span></div>`;}if(ss.endReason)o+=`<p class="note">終了理由：${safe(ss.endReason)}${ss.endMemo?' / '+safe(ss.endMemo):''}</p>`;return o;}
-function historyView(){let h=`<div class="page"><div class="hero"><div class="eyebrow">YOUR PROGRESS · v1.1.2</div><h1>履歴とデータ管理</h1><p>練習記録は端末内に保存されます。</p></div>`;
+function historyView(){let h=`<div class="page"><div class="hero"><div class="eyebrow">YOUR PROGRESS · v1.2.0</div><h1>履歴とデータ管理</h1><p>練習記録は端末内に保存されます。</p></div>`;
  h+=`<div class="card"><div class="sectionbar" style="margin:0 0 12px"><h2>外観設定</h2></div><div class="theme-choices">${[['light','☀ ライト'],['dark','☾ ダーク'],['system','◫ 端末に合わせる']].map(([key,label])=>`<button class="theme-choice" data-action="set-theme" data-theme="${key}" aria-pressed="${data.settings.theme===key}">${label}</button>`).join('')}</div><p class="note">選択はこの端末内に保存され、オフラインでも維持されます。</p></div>`;
 
  h+=`<div class="card"><h2 style="margin:0 0 10px;font-size:16px">バックアップ・共有</h2><div class="btnrow"><button class="btn primary fill" data-action="export-backup">全データをバックアップ</button><button class="btn line fill" data-action="import-backup">バックアップを復元</button></div><div class="btnrow top-margin"><button class="btn line fill" data-action="export-menu">友人にメニューを共有</button><button class="btn line fill" data-action="import-menu">友人のメニューを読み込む</button></div><p class="note">全バックアップには履歴を含みます。友人には「メニューを共有」のJSONのみ渡してください。</p></div>`;
@@ -160,11 +202,11 @@ function historyView(){let h=`<div class="page"><div class="hero"><div class="ey
 }
 function archiveCurrent(){if(!data.active)return;data.history.push(clone(data.active));data.history=data.history.slice(-400);}
 function endSession(kind,reason='',memo=''){const ss=data.active;ss.status=kind;ss.endReason=reason;ss.endMemo=memo;ss.ended=new Date().toISOString();archiveCurrent();persist();render();notify('練習履歴に保存しました');}
-function validateMenu(obj){if(!obj||!Array.isArray(obj.steps)||obj.steps.length<1||obj.steps.length>150)throw Error('メニューの項目数が不正です');const seen=new Set();const steps=obj.steps.map(item=>{if(typeof item.name!=='string'||!item.name.trim()||item.name.length>120||!['count','sync','full','rating','check'].includes(item.type))throw Error('練習項目の形式が不正です');if(['count','sync'].includes(item.type)&&(!Number.isInteger(item.target)||item.target<1||item.target>500))throw Error('目標回数は1〜500にしてください');let sid=item.id;if(!sid||seen.has(sid))sid=id();seen.add(sid);let s={id:sid,group:String(item.group||'自由練習').slice(0,70),name:item.name.slice(0,120),type:item.type,target:['count','sync'].includes(item.type)?item.target:1,detail:String(item.detail||'').slice(0,400)};if(item.type==='full'){if(!Array.isArray(item.skills)||item.skills.length>60)throw Error('通し練習の技一覧が不正です');s.skills=item.skills.map(x=>({id:typeof x.id==='string'&&x.id?x.id:id(),part:String(x.part||'').slice(0,40),name:String(x.name||'').slice(0,160)}));if(s.skills.some(x=>!x.name.trim()))throw Error('技名が入力されていません');s.showTiming=!!item.showTiming;s.timingLabel=String(item.timingLabel||'音ハメ').slice(0,100);}return s;});return{name:typeof obj.name==='string'?obj.name.slice(0,100):'共有メニュー',steps};}
-async function importFile(kind){const input=document.createElement('input');input.type='file';input.accept='application/json,.json';input.onchange=async()=>{const file=input.files?.[0];if(!file)return;try{if(file.size>4e6)throw Error('ファイルが大きすぎます（4MB以内）');const obj=JSON.parse(await file.text());if(kind==='menu'){const menu=validateMenu(obj.kind==='tricklog-menu'?obj.menu:obj);dialog('メニューを読み込みますか？','現在のメニューが置き換わり、練習中なら即時反映されます。古い記録は保持します。','読み込む',()=>{data.menu=menu;applyMenuChange();editExpanded=null;render();notify('メニューを読み込みました');});}else{if(obj.kind!=='tricklog-backup'||!obj.data||!obj.data.menu||!Array.isArray(obj.data.history))throw Error('バックアップ形式が正しくありません');const restored=obj.data;restored.menu=validateMenu(restored.menu);dialog('全データを復元しますか？','現在の練習・履歴・メニューが上書きされます。必要なら先に現在のデータをバックアップしてください。','上書き復元',()=>{data=restored;if(!data.active)data.active=newSession(data.menu);if(!data.active.archivedItems)data.active.archivedItems=[];migrateSkillIds(data);if(!data.settings||!themeValues.includes(data.settings.theme))data.settings={theme:'light'};applyTheme();persist();screen='practice';render();notify('バックアップを復元しました');});}}catch(err){notify('読み込み失敗：'+err.message);}};input.click();}
-function exportBackup(){download('TrickLog_backup_'+today()+'.json',JSON.stringify({kind:'tricklog-backup',version:2,exported:new Date().toISOString(),data},null,2));notify('全データを書き出しました');}
-function exportMenu(){download('TrickLog_menu.json',JSON.stringify({kind:'tricklog-menu',version:2,menu:data.menu},null,2));notify('共有用メニューを書き出しました');}
-function exportSnapshot(){download('TrickLog_session_'+data.active.date+'.json',JSON.stringify({kind:'tricklog-session',version:2,session:data.active},null,2));notify('現在の記録を書き出しました');}
+function validateMenu(obj){if(!obj||!Array.isArray(obj.steps)||obj.steps.length<1||obj.steps.length>150)throw Error('メニューの項目数が不正です');const seen=new Set();const steps=obj.steps.map(item=>{if(typeof item.name!=='string'||!item.name.trim()||item.name.length>120||!['count','timing','sync','full','rating','check'].includes(item.type))throw Error('練習項目の形式が不正です');if(['count','timing','sync'].includes(item.type)&&(!Number.isInteger(item.target)||item.target<1||item.target>500))throw Error('目標回数は1〜500にしてください');let sid=item.id;if(!sid||seen.has(sid))sid=id();seen.add(sid);let s={id:sid,group:String(item.group||'自由練習').slice(0,70),name:item.name.slice(0,120),type:item.type,target:['count','timing','sync'].includes(item.type)?item.target:1,detail:String(item.detail||'').slice(0,400)};if(['count','timing'].includes(item.type)){s.inputMode=item.inputMode==='batch'?'batch':'single';s.batchSize=item.batchSize===10?10:5;}if(item.type==='full'){if(!Array.isArray(item.skills)||item.skills.length>60)throw Error('通し練習の技一覧が不正です');s.skills=item.skills.map(x=>({id:typeof x.id==='string'&&x.id?x.id:id(),part:String(x.part||'').slice(0,40),name:String(x.name||'').slice(0,160)}));if(s.skills.some(x=>!x.name.trim()))throw Error('技名が入力されていません');s.showTiming=!!item.showTiming;s.timingLabel=String(item.timingLabel||'音ハメ').slice(0,100);}return s;});return{name:typeof obj.name==='string'?obj.name.slice(0,100):'共有メニュー',steps};}
+async function importFile(kind){const input=document.createElement('input');input.type='file';input.accept='application/json,.json';input.onchange=async()=>{const file=input.files?.[0];if(!file)return;try{if(file.size>4e6)throw Error('ファイルが大きすぎます（4MB以内）');const obj=JSON.parse(await file.text());if(obj.version!==undefined&&(!Number.isInteger(obj.version)||obj.version>3||obj.version<1))throw Error('未対応のデータ形式です');if(kind==='menu'){const menu=validateMenu(obj.kind==='tricklog-menu'?obj.menu:obj);dialog('メニューを読み込みますか？','現在のメニューが置き換わり、練習中なら即時反映されます。古い記録は保持します。','読み込む',()=>{data.menu=menu;applyMenuChange();editExpanded=null;render();notify('メニューを読み込みました');});}else{if(obj.kind!=='tricklog-backup'||!obj.data||!obj.data.menu||!Array.isArray(obj.data.history))throw Error('バックアップ形式が正しくありません');const restored=obj.data;restored.menu=validateMenu(restored.menu);dialog('全データを復元しますか？','現在の練習・履歴・メニューが上書きされます。必要なら先に現在のデータをバックアップしてください。','上書き復元',()=>{data=restored;if(!data.active)data.active=newSession(data.menu);if(!data.active.archivedItems)data.active.archivedItems=[];migrateSkillIds(data);if(!data.settings||!themeValues.includes(data.settings.theme))data.settings={theme:'light'};applyTheme();persist();screen='practice';render();notify('バックアップを復元しました');});}}catch(err){notify('読み込み失敗：'+err.message);}};input.click();}
+function exportBackup(){download('TrickLog_backup_'+today()+'.json',JSON.stringify({kind:'tricklog-backup',version:3,exported:new Date().toISOString(),data},null,2));notify('全データを書き出しました');}
+function exportMenu(){download('TrickLog_menu.json',JSON.stringify({kind:'tricklog-menu',version:3,menu:data.menu},null,2));notify('共有用メニューを書き出しました');}
+function exportSnapshot(){download('TrickLog_session_'+data.active.date+'.json',JSON.stringify({kind:'tricklog-session',version:3,session:data.active},null,2));notify('現在の記録を書き出しました');}
 function summaryText(ss){const rows=[`TrickLog 練習記録｜${ss.date}`,`メニュー：${ss.menu.name}`,`状態：${({active:'練習中',paused:'一時中断',complete:'全メニュー完了',ended:'途中終了'}[ss.status])}`];ss.menu.steps.forEach(s=>rows.push(`・${s.name}：${scoreLabel(s,ss.entries[s.id])}`));(ss.archivedItems||[]).forEach(x=>rows.push(`・[退避] ${x.step.name}：${scoreLabel(x.step,x.entry)}`));return rows.join('\n');}
 async function copySummary(){const text=summaryText(data.active);try{await navigator.clipboard.writeText(text);notify('結果をコピーしました');}catch{const input=document.createElement('textarea');input.value=text;document.body.appendChild(input);input.select();const success=document.execCommand('copy');input.remove();notify(success?'結果をコピーしました':'コピーできませんでした');}}
 function newSessionConfirm(){dialog('新しい練習を始めますか？','今の記録は履歴に保存され、新しい練習日が始まります。','新しく開始',()=>{if(data.active&&!['ended','complete'].includes(data.active.status)){data.active.status='ended';data.active.endReason='新規練習開始';archiveCurrent();}data.active=newSession(data.menu);syncDraft={skill:'',timing:''};persist();screen='practice';render();notify('新しい練習を開始しました');});}
@@ -173,7 +215,23 @@ app.addEventListener('click',ev=>{const btn=ev.target.closest('[data-action]');i
  const action=btn.dataset.action,ss=data.active,s=ss?.menu.steps[ss.stepIndex],e=s?ss.entries[s.id]:null;
  if(action==='go-step'){ss.stepIndex=Number(btn.dataset.index);syncDraft={skill:'',timing:''};persist();render();return;}
  if(action==='step-prev'||action==='step-next'){ss.stepIndex=Math.max(0,Math.min(ss.menu.steps.length-1,ss.stepIndex+(action==='step-prev'?-1:1)));syncDraft={skill:'',timing:''};persist();render();return;}
- if(action==='trial'&&activeOk()&&s.type==='count'&&e.trials.length<s.target){e.trials.push(btn.dataset.val==='ok');persist();render();return;}
+ if(action==='batch-choose'&&activeOk()&&['count','timing'].includes(s.type)){
+  batchChoice[s.id]=Number(btn.dataset.count)===10?10:5;render();return;
+ }
+ if(action==='record-batch'&&activeOk()&&['count','timing'].includes(s.type)&&batchMode(s)==='batch'){
+  const attempts=Number(btn.dataset.attempts),successes=Number(btn.dataset.successes);
+  const left=s.target-statsFor(s,e).attempts;
+  if(!Number.isInteger(attempts)||!Number.isInteger(successes)||attempts<1||attempts>10||attempts>left||successes<0||successes>attempts)return;
+  if(!Array.isArray(e.batches))e.batches=[];
+  e.batches.push({id:id(),attempts,successes,recordedAt:new Date().toISOString()});persist();render();return;
+ }
+ if(action==='quick-trial'&&activeOk()&&['count','timing'].includes(s.type)&&batchMode(s)==='single'&&statsFor(s,e).attempts<s.target){
+  if(!Array.isArray(e.batches))e.batches=[];
+  e.batches.push({id:id(),attempts:1,successes:btn.dataset.val==='ok'?1:0,recordedAt:new Date().toISOString()});persist();render();return;
+ }
+ if(action==='undo-record'&&activeOk()&&['count','timing'].includes(s.type)){
+  if(e.batches?.length)e.batches.pop();else if(e.trials?.length)e.trials.pop();persist();render();return;
+ }
  if(action==='sync-add'&&activeOk()&&s.type==='sync'&&e.trials.length<s.target&&syncDraft.skill&&syncDraft.timing){e.trials.push({...syncDraft});syncDraft={skill:'',timing:''};persist();render();return;}
  if(action==='undo-trial'&&activeOk()&&e?.trials?.length){e.trials.pop();persist();render();return;}
  if(action==='set-full'&&activeOk()){e.ratings[Number(btn.dataset.index)]=btn.dataset.val;persist();render();return;}
@@ -189,7 +247,7 @@ app.addEventListener('click',ev=>{const btn=ev.target.closest('[data-action]');i
  if(action==='export-menu'){exportMenu();return;}
  if(action==='import-menu'||action==='import-backup'){importFile(action==='import-menu'?'menu':'backup');return;}
  if(action==='history-toggle'){historyOpen=historyOpen===btn.dataset.id?null:btn.dataset.id;render();return;}
- if(action==='export-session'){const row=data.history.find(x=>x.id===btn.dataset.id);if(row)download('TrickLog_'+row.date+'_'+row.id+'.json',JSON.stringify({kind:'tricklog-session',version:2,session:row},null,2));return;}
+ if(action==='export-session'){const row=data.history.find(x=>x.id===btn.dataset.id);if(row)download('TrickLog_'+row.date+'_'+row.id+'.json',JSON.stringify({kind:'tricklog-session',version:3,session:row},null,2));return;}
  if(action==='set-theme'){data.settings.theme=btn.dataset.theme;applyTheme();persist();render();return;}
  if(action==='edit-toggle'){editExpanded=editExpanded===btn.dataset.id?null:btn.dataset.id;render();return;}
  if(action==='move-up'||action==='move-down'){const i=Number(btn.dataset.index),j=i+(action==='move-up'?-1:1);if(j>=0&&j<data.menu.steps.length){[data.menu.steps[i],data.menu.steps[j]]=[data.menu.steps[j],data.menu.steps[i]];applyMenuChange();render();}return;}
@@ -220,7 +278,7 @@ app.addEventListener('click',ev=>{const btn=ev.target.closest('[data-action]');i
   [item.skills[i],item.skills[j]]=[item.skills[j],item.skills[i]];
   applyMenuChange();render();return;
  }
- if(action==='add-step'){const name=$('#new-name').value.trim(),type=$('#new-type').value,target=Number($('#new-target').value);if(!name){notify('練習名を入力してください');return;}if(['count','sync'].includes(type)&&(!Number.isInteger(target)||target<1||target>500)){notify('目標回数は1〜500で指定してください');return;}const item={id:id(),name,group:'自由練習',type,target:['count','sync'].includes(type)?target:1,detail:'',...(type==='full'?{skills:[],showTiming:false,timingLabel:'音ハメ'}:{})};data.menu.steps.push(item);editExpanded=item.id;applyMenuChange();render();notify('項目を現在の練習にも追加しました');return;}
+ if(action==='add-step'){const name=$('#new-name').value.trim(),type=$('#new-type').value,target=Number($('#new-target').value);if(!name){notify('練習名を入力してください');return;}if(['count','timing'].includes(type)&&(!Number.isInteger(target)||target<1||target>500)){notify('目標回数は1〜500で指定してください');return;}const item={id:id(),name,group:'自由練習',type,target:['count','timing'].includes(type)?target:1,detail:'',...(['count','timing'].includes(type)?{inputMode:'batch',batchSize:5}:{}),...(type==='full'?{skills:[],showTiming:false,timingLabel:'音ハメ'}:{})};data.menu.steps.push(item);editExpanded=item.id;applyMenuChange();render();notify('項目を現在の練習にも追加しました');return;}
  if(action==='reset-template'){dialog('初期メニューへ戻しますか？','現在の編集済みメニューを新しい4項目のサンプルに置き換えます。練習中の記録がある項目は退避します。','初期化する',()=>{data.menu=defaultMenu();editExpanded=null;applyMenuChange();render();});return;}
 });
 app.addEventListener('change',ev=>{const t=ev.target,ss=data.active,s=ss?.menu.steps[ss.stepIndex],e=s?ss.entries[s.id]:null;
@@ -233,8 +291,14 @@ app.addEventListener('change',ev=>{const t=ev.target,ss=data.active,s=ss?.menu.s
  if(t.dataset.skillField==='name'&&!t.value.trim()){const row=data.menu.steps.find(st=>st.id===t.dataset.editId)?.skills?.find(sk=>sk.id===t.dataset.skill);if(row){t.value=row.name;notify('技名は空欄にできません');}return;}
  const item=data.menu.steps.find(st=>st.id===t.dataset.editId);
  if(!item)return;
- if(t.dataset.editKey==='type'){const next=t.value;if(next===item.type)return;const recorded=data.active&&['active','paused'].includes(data.active.status)&&hasData(item,data.active.entries[item.id]);const update=()=>{item.type=next;item.target=['count','sync'].includes(next)?Math.max(1,item.target||10):1;if(next==='full'&&!Array.isArray(item.skills))item.skills=[];if(next==='full'&&item.showTiming===undefined)item.showTiming=false;applyMenuChange();render();};if(recorded){dialog('記録方式を変更しますか？','入力済みの記録は退避して保持し、新しい方式の入力は未実施から開始します。','変更する',update);t.value=item.type;}else update();return;}
+ if(t.dataset.editKey==='type'){const next=t.value;if(next===item.type)return;const recorded=data.active&&['active','paused'].includes(data.active.status)&&hasData(item,data.active.entries[item.id]);const update=()=>{item.type=next;item.target=['count','timing','sync'].includes(next)?Math.max(1,item.target||10):1;if(['count','timing'].includes(next)){item.inputMode='batch';item.batchSize=5;}if(next==='full'&&!Array.isArray(item.skills))item.skills=[];if(next==='full'&&item.showTiming===undefined)item.showTiming=false;applyMenuChange();render();};if(recorded){dialog('記録方式を変更しますか？','入力済みの記録は退避して保持し、新しい方式の入力は未実施から開始します。','変更する',update);t.value=item.type;}else update();return;}
  if(t.dataset.editKey==='target'){const n=Number(t.value);if(!Number.isInteger(n)||n<1||n>500){notify('目標回数は1〜500にしてください');t.value=item.target;return;}item.target=n;applyMenuChange();return;}
+ if(t.dataset.editKey==='inputMode'&&['count','timing'].includes(item.type)){
+  item.inputMode=t.value==='batch'?'batch':'single';applyMenuChange();render();return;
+ }
+ if(t.dataset.editKey==='batchSize'&&['count','timing'].includes(item.type)){
+  item.batchSize=Number(t.value)===10?10:5;delete batchChoice[item.id];applyMenuChange();render();return;
+ }
  if(t.dataset.editKey==='showTiming'){item.showTiming=t.checked;applyMenuChange();setTimeout(()=>{if(screen==='menu')render();},0);return;}
 
 });
