@@ -1,5 +1,5 @@
-const CACHE='tricklog-v1.1.0-r4';
-const ASSETS=['./','./index.html','./styles.css','./app.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
+const CACHE='tricklog-v1.1.1-icon';
+const ASSETS=['./','./index.html','./styles.css','./app.js','./manifest.webmanifest','./icons/icon-192-v111.png','./icons/icon-512-v111.png','./icons/icon-180-v111.png'];
 self.addEventListener('install', event => {
  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
 });
