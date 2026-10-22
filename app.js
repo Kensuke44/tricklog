@@ -1,6 +1,6 @@
 'use strict';
 (()=>{
-// TrickLog 1.2.0 -- Backwards-compatible with v1.x's tricklog_v1 localStorage data.
+// TrickLog 1.2.1 -- Backwards-compatible with v1.x's tricklog_v1 localStorage data.
 // Deliberately no analytics, account, remote APIs, or user-data network requests.
 const STORE='tricklog_v1';
 const id=()=> 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -126,7 +126,7 @@ function renderStep(s,e,editable){const disabled=editable?'':'disabled';let h=''
   const mode=batchMode(s);
   if(mode==='batch'){
    const choice=batchChoice[s.id]||configuredBatch(s),take=Math.min(left,choice);
-   h+=`<div class="batch-panel top-margin"><div class="inline-label">まとめて練習する回数</div><div class="batch-size-row">${[5,10].map(x=>`<button type="button" class="btn ${choice===x?'primary':'line'}" data-action="batch-choose" data-count="${x}" ${disabled} ${left===0?'disabled':''}>${x}回</button>`).join('')}</div>`;
+   h+=`<div class="batch-panel top-margin"><div class="inline-label">1セットで記録する回数</div><div class="batch-size-row">${[5,10].map(x=>`<button type="button" class="btn ${choice===x?'primary':'line'}" data-action="batch-choose" data-count="${x}" ${disabled} ${left===0?'disabled':''}>${x}回</button>`).join('')}</div>`;
    if(left>0){h+=`<p class="batch-prompt"><strong>${take}回</strong>練習したあと、成功回数を1回タップ</p><div class="batch-numbers">${Array.from({length:take+1},(_,i)=>`<button type="button" class="batch-number" data-action="record-batch" data-attempts="${take}" data-successes="${i}" ${disabled}>${i}</button>`).join('')}</div>`;}
    else h+='<div class="okbox top-margin">目標回数に達しました。</div>';
    h+='</div>';
@@ -152,7 +152,7 @@ function renderStep(s,e,editable){const disabled=editable?'':'disabled';let h=''
 function practiceView(){const ss=data.active;if(!ss||!ss.menu.steps.length){app.innerHTML='<div class="page"><div class="empty"><strong>練習を始めましょう</strong></div></div>';return;}
  const s=ss.menu.steps[ss.stepIndex],e=ss.entries[s.id],completed=ss.menu.steps.filter(v=>entryDone(v,ss.entries[v.id])).length;
  const status={active:'練習中',paused:'一時中断',ended:'途中終了',complete:'全メニュー完了'}[ss.status];
- let h=`<div class="page"><div class="hero"><div class="eyebrow">TODAY'S PRACTICE · v1.2.0</div><h1>${safe(ss.menu.name)}</h1></div>`;
+ let h=`<div class="page"><div class="hero"><div class="eyebrow">TODAY'S PRACTICE · v1.2.1</div><h1>${safe(ss.menu.name)}</h1></div>`;
  if(!storageOK)h+='<div class="alert">端末の保存領域に書き込めません。バックアップをお試しください。</div>';
  h+=`<div class="card"><div class="row"><div class="field" style="margin:0;max-width:180px;flex:1"><label>練習日</label><input type="date" id="session-date" value="${safe(ss.date)}" ${ss.status==='active'?'':'disabled'}></div><span class="pill ${ss.status==='complete'?'done':ss.status==='ended'?'warn':''}">${status}</span></div><div class="row top-margin"><span class="muted">進捗 ${completed}/${ss.menu.steps.length}項目</span><span class="muted">${Math.round(completed/ss.menu.steps.length*100)}%</span></div><div class="progress top-margin"><div style="width:${completed/ss.menu.steps.length*100}%"></div></div></div>`;
  h+=`<div class="sectionbar"><h2>練習ステップ</h2><span class="muted">タップして移動</span></div><div class="step-nav">${ss.menu.steps.map((st,i)=>`<button class="step-chip ${ss.stepIndex===i?'active':entryDone(st,ss.entries[st.id])?'complete':''}" data-action="go-step" data-index="${i}">${i+1} ${entryDone(st,ss.entries[st.id])?'✓ ':''}${safe(st.name.length>11?st.name.slice(0,11)+'…':st.name)}</button>`).join('')}</div>`;
@@ -165,7 +165,7 @@ function practiceView(){const ss=data.active;if(!ss||!ss.menu.steps.length){app.
  h+='</div>';app.innerHTML=h;
 }
 function menuView(){const m=data.menu;const live=data.active&&['active','paused'].includes(data.active.status);
- let h=`<div class="page"><div class="hero"><div class="eyebrow">CUSTOMIZE YOUR ROUTINE · v1.2.0</div><h1>自分だけのメニューを作る</h1><p>技名・目標回数・順番をいつでも変更できます。</p></div>`;
+ let h=`<div class="page"><div class="hero"><div class="eyebrow">CUSTOMIZE YOUR ROUTINE · v1.2.1</div><h1>自分だけのメニューを作る</h1><p>技名・目標回数・順番をいつでも変更できます。</p></div>`;
 
  h+=`<div class="card"><div class="field"><label>メニュー名</label><input data-menu-name value="${safe(m.name)}" maxlength="100"></div><div class="okbox">${live?'追加・編集・並べ替えは、現在の練習画面へすぐ反映されます。入力済みの回数は保持します。':'このメニューは次に開始する練習から使われます。終了済みの履歴は変わりません。'}</div><div class="btnrow top-margin"><button class="btn line fill" data-action="export-menu">メニュー共有用に書き出す</button><button class="btn line fill" data-action="import-menu">メニューを読み込む</button></div></div>`;
  h+=`<div class="sectionbar"><h2>練習項目（${m.steps.length}）</h2><span class="muted">編集・移動できます</span></div>`;
@@ -190,7 +190,7 @@ function scoreLabel(s,e){if(!e)return '未実施';if(s.type==='check')return e.d
  return `${v.successes}/${v.attempts}成功（${ratio(v.successes,v.attempts)}）`;
  }if(s.type==='rating')return e.rating?({ok:'○ 成功',mid:'△ 不安定',ng:'× 失敗'}[e.rating]):'未実施';if(s.type==='full'){const vals=(e.ratings||[]).filter(Boolean);return vals.length?`失敗${vals.filter(x=>x==='ng').length}・不安定${vals.filter(x=>x==='mid').length}（${vals.length}評価）`:'未実施';}return '未実施';}
 function sessionDetail(ss){let o='';ss.menu.steps.forEach(s=>{const e=ss.entries[s.id];o+=`<div class="row" style="border-bottom:1px solid var(--line);padding:9px 0"><span class="mini" style="flex:1;color:var(--text)">${safe(s.name)}</span><span class="mini" style="text-align:right">${safe(scoreLabel(s,e))}</span></div>`;});for(const a of ss.archivedItems||[]){o+=`<div class="row" style="border-bottom:1px solid var(--line);padding:9px 0"><span class="mini" style="flex:1">[退避] ${safe(a.step.name)}</span><span class="mini">${safe(scoreLabel(a.step,a.entry))}</span></div>`;}if(ss.endReason)o+=`<p class="note">終了理由：${safe(ss.endReason)}${ss.endMemo?' / '+safe(ss.endMemo):''}</p>`;return o;}
-function historyView(){let h=`<div class="page"><div class="hero"><div class="eyebrow">YOUR PROGRESS · v1.2.0</div><h1>履歴とデータ管理</h1><p>練習記録は端末内に保存されます。</p></div>`;
+function historyView(){let h=`<div class="page"><div class="hero"><div class="eyebrow">YOUR PROGRESS · v1.2.1</div><h1>履歴とデータ管理</h1><p>練習記録は端末内に保存されます。</p></div>`;
  h+=`<div class="card"><div class="sectionbar" style="margin:0 0 12px"><h2>外観設定</h2></div><div class="theme-choices">${[['light','☀ ライト'],['dark','☾ ダーク'],['system','◫ 端末に合わせる']].map(([key,label])=>`<button class="theme-choice" data-action="set-theme" data-theme="${key}" aria-pressed="${data.settings.theme===key}">${label}</button>`).join('')}</div><p class="note">選択はこの端末内に保存され、オフラインでも維持されます。</p></div>`;
 
  h+=`<div class="card"><h2 style="margin:0 0 10px;font-size:16px">バックアップ・共有</h2><div class="btnrow"><button class="btn primary fill" data-action="export-backup">全データをバックアップ</button><button class="btn line fill" data-action="import-backup">バックアップを復元</button></div><div class="btnrow top-margin"><button class="btn line fill" data-action="export-menu">友人にメニューを共有</button><button class="btn line fill" data-action="import-menu">友人のメニューを読み込む</button></div><p class="note">全バックアップには履歴を含みます。友人には「メニューを共有」のJSONのみ渡してください。</p></div>`;
