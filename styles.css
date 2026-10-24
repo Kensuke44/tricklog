@@ -23,3 +23,35 @@
 .batch-history{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .batch-chip{font-size:11px;line-height:1.5;background:var(--primary-muted);color:var(--primary-text);border-radius:9px;padding:7px 9px;font-weight:750}
 @media(max-width:355px){.batch-numbers{gap:5px}.batch-number{font-size:17px;min-height:47px}}
+
+/* Phase 2 DEV: keep improvements inside the existing step panel. */
+.improve-box{border:1px solid var(--line);background:var(--surface2);border-radius:14px;padding:12px;margin-bottom:14px}
+.improve-box .row strong{font-size:13px}
+.improve-compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:11px}
+.improve-compare>div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 7px;min-width:0}
+.improve-compare span{display:block;font-size:10px;color:var(--sub);margin-bottom:4px}
+.improve-compare strong{display:block;font-size:13px;white-space:normal;overflow-wrap:anywhere}
+.improve-memo{margin-top:12px;background:var(--surface);border-radius:10px;padding:9px 11px;border:1px solid var(--line)}
+.improve-memo summary{font-size:12px;color:var(--primary-text);font-weight:750;cursor:pointer}
+.improve-memo .field{margin:12px 0 0}
+.improve-history{padding:4px 0}
+.improve-row{padding:8px 3px;border-bottom:1px solid var(--line);display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;font-size:12px}
+.improve-row .mini{width:100%}
+
+/* Phase 3 DEV: tappable improvement records and transactional editor */
+.improve-row-button{width:100%;border:0;background:transparent;color:var(--text);text-align:left;cursor:pointer;min-height:49px;align-items:center;font:inherit}
+.improve-row-button:active,.improve-baseline-edit:active{background:var(--primary-muted)}
+.improve-row-button strong{font-size:12px}
+.improve-row-memo{display:block;width:100%;color:var(--sub)}
+.improve-baseline-edit{width:100%;border:1px solid var(--line);border-radius:10px;text-align:left;background:var(--surface);color:var(--primary-text);font-size:12px;font-weight:750;padding:10px;min-height:44px}
+.improve-date-separator{text-align:center;border-bottom:1px dotted var(--line);padding:6px 0;font-weight:750}
+.improve-completed-item{margin-top:9px;padding:10px 0;border-top:1px solid var(--line)}
+.improve-completed-item .btn{white-space:normal;text-align:left;line-height:1.5}
+.improve-attempt-count{min-width:38px;text-align:center;padding:9px 2px}
+.batch-number.improve-selected{border:2px solid var(--primary);background:var(--primary-muted);color:var(--primary-text);box-shadow:0 0 0 1px var(--primary);font-weight:900}
+
+/* Phase 4 DEV: out-of-menu improvements are deliberately not on practice screen. */
+.offmenu-group{border-top:1px solid var(--line);margin-top:12px;padding:13px 0 2px}
+.offmenu-group>strong{font-size:14px;line-height:1.6}
+.offmenu-group .btnrow{flex-wrap:wrap}
+.offmenu-group .btnrow button{min-width:130px}

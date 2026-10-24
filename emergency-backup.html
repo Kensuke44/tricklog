@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<title>TrickLog 緊急バックアップ（読み取り専用）</title>
+<style>
+ body{font:16px/1.65 system-ui,sans-serif;background:#f7f8fc;color:#152237;margin:0;padding:24px}main{max-width:650px;margin:auto;background:white;border-radius:16px;padding:24px;box-shadow:0 4px 20px #1232}h1{font-size:1.4rem}button{display:block;width:100%;font:inherit;font-weight:700;background:#365bd9;color:white;padding:15px;border:0;border-radius:11px;margin-top:15px}button:disabled{background:#aaa}.note{color:#50647c}#msg{white-space:pre-wrap;border-radius:8px;background:#eef3fa;padding:12px;overflow-wrap:anywhere}.warning{background:#fff3df;padding:10px;border-radius:8px}code{word-break:break-all}
+</style>
+</head>
+<body><main>
+<h1>TrickLog 緊急バックアップ（RC2）</h1>
+<p class="warning"><strong>読み取り専用。</strong>記録の追加・変更・削除・復元は行いません。通常のバックアップ機能が使用できない場合の保険です。</p>
+<p class="note">本番GitHub Pages上で公開するか、専用の隔離プレビューでのみ使用してください。別URLの端末内データにはアクセスできません。</p>
+<p id="environment"></p>
+<button id="inspect">保存データの有無を調べる</button>
+<button id="export">TrickLog v4形式で書き出す（RC向け）</button>
+<button id="raw">生データをそのまま書き出す（原本保全）</button>
+<p id="msg" role="status">いずれかのボタンを押して開始してください。</p>
+<script>
+'use strict';
+(()=>{
+ const prod=location.hostname==='kensuke44.github.io'&&/^\/tricklog(?:\/|$)/.test(location.pathname);
+ const preview=location.hostname==='kaleidoscopic-pony-1a4322.netlify.app' || location.hostname.endsWith('.netlify.app');
+ const key=prod?'tricklog_v1':preview?'tricklog_phase7_rc_preview_v1':null;
+ const $=id=>document.getElementById(id);
+ const show=message=>{$('msg').textContent=message;};
+ $('environment').textContent=key?`対象保存キー: ${key}`:'この公開先は許可されていません。書き出しは無効です。';
+ if(!key){for(const id of ['inspect','export','raw'])$(id).disabled=true;return;}
+ const read=()=>{
+  const raw=localStorage.getItem(key);
+  if(!raw)throw Error('端末に保存されたTrickLogデータが見つかりません。ブラウザ・サイトURL・プロファイルを確認してください。');
+  return raw;
+ };
+ const check=raw=>{
+  const parsed=JSON.parse(raw);
+  if(!parsed||!parsed.menu||!Array.isArray(parsed.menu.steps)||!Array.isArray(parsed.history)||!parsed.active)
+    throw Error('保存状態の基本構造を確認できません。生データ保全ボタンなら内容をそのまま保存できます。');
+  return parsed;
+ };
+ function download(file,value){
+  const blob=new Blob([value],{type:'application/json;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=file;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
+ }
+ const stamp=()=>new Date().toISOString().replace(/[:.]/g,'-');
+ $('inspect').addEventListener('click',()=>{
+  try{
+   const raw=read(),d=check(raw);
+   show(`保存データあり。メニュー ${d.menu.steps.length}項目／履歴 ${d.history.length}件／改善テスト ${Array.isArray(d.improvementTests)?d.improvementTests.length:0}件。\n読み取りのみを実施しました。`);
+  }catch(e){show('検査結果: '+e.message);}
+ });
+ $('export').addEventListener('click',()=>{
+  try{
+   const d=check(read());
+   const envelope={kind:'tricklog-backup',version:4,exported:new Date().toISOString(),data:d};
+   download('TrickLog_EMERGENCY_v4_'+stamp()+'.json',JSON.stringify(envelope,null,2));
+   show('v4形式のダウンロードを要求しました。ファイルが保存されたか端末で確認してください。元データは変更していません。');
+  }catch(e){show('書き出しを中止しました: '+e.message);}
+ });
+ $('raw').addEventListener('click',()=>{
+  try{
+   const raw=read();
+   // This file is a byte-for-byte-preserving JSON string wrapper; useful even if the app's state schema is invalid.
+   const envelope={kind:'tricklog-emergency-raw',version:1,exported:new Date().toISOString(),origin:location.origin,storageKey:key,rawState:raw};
+   download('TrickLog_EMERGENCY_RAW_'+stamp()+'.json',JSON.stringify(envelope,null,2));
+   show('生データ保全ファイルのダウンロードを要求しました。通常のTrickLogバックアップとしてそのまま復元せず、修復用の原本として保管してください。元データは変更していません。');
+  }catch(e){show('書き出しを中止しました: '+e.message);}
+ });
+})();
+</script>
+</main></body></html>

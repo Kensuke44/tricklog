@@ -23,4 +23,15 @@
 </nav></div>
 <div id="toast" role="status" aria-live="polite"></div><div id="modal-root"></div>
 <script src="./app.js" defer></script>
+<script>
+// Production preserves installed PWA path and identity; preview uses a different origin.
+window.addEventListener('load', () => {
+ if (!('serviceWorker' in navigator) || location.protocol !== 'https:') return;
+ const production = location.hostname === 'kensuke44.github.io' &&
+   /^\/tricklog(?:\/|$)/.test(location.pathname);
+ const preview = /(?:\.netlify\.app|\.pages\.dev)$/.test(location.hostname);
+ if (production || preview) navigator.serviceWorker.register('./sw.js', {scope:'./'})
+   .catch(error => console.warn('TrickLog SW update unavailable', error));
+});
+</script>
 </body></html>
