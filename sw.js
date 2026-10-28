@@ -2,9 +2,10 @@
 // TrickLog RC2 - compatible app-shell updates + offline emergency export.
 // Keep old app caches during candidate evaluation; release cleanup is deliberate.
 const production=self.location.hostname==='kensuke44.github.io'&&/^\/tricklog\//.test(self.location.pathname);
-const CACHE=production?'tricklog-v1.3.0-rc2':'tricklog-phase7-rc-preview-v2';
+const CACHE=production?'tricklog-v1.3.0-rc2-iconfix-20261029':'tricklog-phase7-rc-preview-v2';
 const FILES=['./','./index.html','./styles.css','./app.js','./manifest.webmanifest',
- './emergency-backup.html','./icons/icon-192-v111.png','./icons/icon-512-v111.png',
+ './emergency-backup.html','./icon-192-v20261029.png','./icon-512-v20261029.png',
+ './icons/icon-192-v111.png','./icons/icon-512-v111.png',
  './icons/icon-180-v111.png'];
 const APP='./index.html';
 const RESCUE='./emergency-backup.html';
