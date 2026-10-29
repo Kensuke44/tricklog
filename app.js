@@ -785,7 +785,35 @@ async function importFile(kind){
 function exportBackup(){download('TrickLog_backup_'+today()+'.json',JSON.stringify(fullBackup(),null,2));notify('全データ（v4）を書き出しました');}
 function exportMenu(){download('TrickLog_menu.json',JSON.stringify({kind:'tricklog-menu',version:3,menu:data.menu},null,2));notify('共有用メニューを書き出しました');}
 function exportSnapshot(){download('TrickLog_session_'+data.active.date+'.json',JSON.stringify({kind:'tricklog-session',version:3,session:data.active},null,2));notify('現在の記録を書き出しました');}
-function summaryText(ss){const rows=[`TrickLog 練習記録｜${ss.date}`,`メニュー：${ss.menu.name}`,`状態：${({active:'練習中',paused:'一時中断',complete:'全メニュー完了',ended:'途中終了'}[ss.status])}`];ss.menu.steps.forEach(s=>rows.push(`・${s.name}：${scoreLabel(s,ss.entries[s.id])}`));(ss.archivedItems||[]).forEach(x=>rows.push(`・[退避] ${x.step.name}：${scoreLabel(x.step,x.entry)}`));return rows.join('\n');}
+function summaryText(ss){
+  const rows=[
+    `TrickLog 練習記録｜${ss.date}`,
+    `メニュー：${ss.menu.name}`,
+    `状態：${({active:'練習中',paused:'一時中断',complete:'全メニュー完了',ended:'途中終了'}[ss.status])}`
+  ];
+  const appendStep=(s,e,prefix='')=>{
+    rows.push(`・${prefix}${s.name}：${scoreLabel(s,e,ss)}`);
+    if(s.type!=='full')return;
+    const skills=Array.isArray(s.skills)?s.skills:[];
+    const ratings=Array.isArray(e?.ratings)?e.ratings:[];
+    const rated=ratings.some(x=>['ok','mid','ng'].includes(x));
+    const timingRecorded=typeof e?.timing==='string'&&e.timing!=='';
+    // 未着手の通しは合計行「未実施」のみ出力する。
+    if(!rated&&!timingRecorded)return;
+    skills.forEach((skill,i)=>{
+      const mark=({ok:'○',mid:'△',ng:'×'})[ratings[i]]||'未評価';
+      const part=skill.part?`${skill.part}｜`:'';
+      rows.push(`  ・${part}${skill.name}：${mark}`);
+    });
+    if(s.showTiming){
+      const timing=({fit:'合った',early:'早い',late:'遅い',unknown:'確認できず'})[e?.timing]||'未記録';
+      rows.push(`  ・${s.timingLabel||'音ハメ'}：${timing}`);
+    }
+  };
+  ss.menu.steps.forEach(s=>appendStep(s,ss.entries?.[s.id]));
+  (ss.archivedItems||[]).forEach(x=>appendStep(x.step,x.entry,'[退避] '));
+  return rows.join('\n');
+}
 async function copySummary(){const text=summaryText(data.active);try{await navigator.clipboard.writeText(text);notify('結果をコピーしました');}catch{const input=document.createElement('textarea');input.value=text;document.body.appendChild(input);input.select();const success=document.execCommand('copy');input.remove();notify(success?'結果をコピーしました':'コピーできませんでした');}}
 function newSessionConfirm(){dialog('新しい練習を始めますか？','今の記録は履歴に保存され、新しい練習日が始まります。','新しく開始',()=>{if(data.active&&!['ended','complete'].includes(data.active.status)){data.active.status='ended';data.active.endReason='新規練習開始';archiveCurrent();}data.active=newSession(data.menu);syncDraft={skill:'',timing:''};if(!persist())return false;screen='practice';render();notify('新しい練習を開始しました');});}
 const activeOk=()=>data.active?.status==='active';
